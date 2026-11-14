@@ -1,0 +1,70 @@
+# cp terraform.tfvars.example terraform.tfvars  (and adjust)
+# Secrets go in .env (see .env.example), loaded with: set -a; source .env; set +a
+
+# --- Proxmox -----------------------------------------------------------------
+proxmox_endpoint = "https://192.0.2.10:8006/"
+proxmox_node     = "pve"
+vm_datastore     = "local-lvm"
+image_datastore  = "local"
+network_bridge   = "vmbr0"
+
+# --- Shared NixOS defaults ---------------------------------------------------
+ipv4_gateway         = "192.0.2.1"
+dns_servers          = ["192.0.2.1"]
+ssh_public_key_files = ["~/.ssh/id_ed25519.pub"]
+timezone             = "UTC"
+
+# --- TLS (optional): Let's Encrypt via DNS-01 for every VM with a `domain` -----
+# acme_email        = "you@example.com"
+# acme_dns_provider = "cloudflare"
+# acme_dns_env_file = "~/.config/homelab-tofu/cloudflare.env"   # CLOUDFLARE_DNS_API_TOKEN=...
+# pve_domain        = "pve.example.com"   # Let's Encrypt cert for the Proxmox UI (port 8006)
+
+# --- Backups (optional): restic to Cloudflare R2, one repo per VM -------------
+# Account ID: TF_VAR_backup_r2_account_id in .env
+# backup_r2_bucket     = "homelab-backup"
+# backup_env_file      = "~/.config/homelab-tofu/restic.env"    # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+# backup_password_file = "~/.config/homelab-tofu/restic-password"
+
+# --- NixOS VMs: each key needs nixos/hosts/<key>/default.nix -------------------
+nixos_vms = {
+  authentik = {
+    ipv4_cidr = "192.0.2.50/24"
+    memory_mb = 4096
+    domain    = "auth.example.com"
+    # vm_id       = 110
+    # guest_agent = true   # after the first apply
+  }
+
+  # Single-node k3s with Pi-hole (nixos/hosts/k3s, apps in nixos/hosts/k3s/apps/)
+  k3s = {
+    ipv4_cidr   = "192.0.2.60/24"
+    cores       = 4
+    memory_mb   = 4096
+    disk_gb     = 40
+    dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
+  }
+}
+
+# --- Home Assistant OS VMs (official appliance image, DHCP) -------------------
+haos_vms = {
+  # homeassistant = {
+  #   haos_version = "18.4"
+  #   cores        = 2
+  #   memory_mb    = 4096
+  #   mac_address  = "BC:24:11:00:00:01"   # fixed MAC
+  #   ipv4_cidr    = "192.0.2.57/24"       # static IP, set inside HAOS via the guest agent
+  #   usb_devices = {
+  #     zigbee-zwave = "10c4:8a2a"
+  #     bluetooth    = "0b05:1bf6"
+  #   }
+  # }
+}
+
+# --- Proxmox VM backups: all VMs above + extra_vmids (not managed by tofu) -----
+# pve_backup = {
+#   schedule      = "01:00"
+#   storage       = "local"
+#   prune_backups = { "keep-daily" = "3", "keep-weekly" = "2" }
+#   extra_vmids   = [100]
+# }
