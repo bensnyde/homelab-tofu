@@ -36,13 +36,22 @@ nixos_vms = {
     # guest_agent = true   # after the first apply
   }
 
-  # Single-node k3s with Pi-hole (nixos/hosts/k3s, apps in nixos/hosts/k3s/apps/)
+  # Single-node k3s with Pi-hole, Audiobookshelf, Mealie (apps in nixos/hosts/k3s/apps/)
   k3s = {
     ipv4_cidr   = "192.0.2.60/24"
     cores       = 4
     memory_mb   = 4096
     disk_gb     = 40
     dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
+  }
+
+  # Kasm Workspaces (nixos/hosts/kasm). Workspace images are large; sessions need RAM.
+  kasm = {
+    ipv4_cidr = "192.0.2.70/24"
+    cores     = 4
+    memory_mb = 8192
+    disk_gb   = 100
+    # domain  = "kasm.example.com"
   }
 }
 
