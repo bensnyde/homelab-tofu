@@ -86,7 +86,7 @@ variable "settings" {
 }
 
 variable "secrets" {
-  description = "Files copied to the VM at install time, as { \"/path/on/vm\" = \"~/local/file\" }."
-  type        = map(string)
-  default     = {}
+  description = "Names of files for /var/lib/secrets on the VM, built from .env values at install time (see scripts/lib/secrets.sh)."
+  type        = list(string)
+  default     = []
 }

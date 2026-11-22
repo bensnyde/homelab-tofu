@@ -94,37 +94,38 @@ variable "acme_dns_provider" {
   default     = "cloudflare"
 }
 
-variable "acme_dns_env_file" {
-  description = "Local file with the DNS provider credentials, e.g. CLOUDFLARE_DNS_API_TOKEN=... Copied to VMs at install."
+# The DNS token itself is CLOUDFLARE_DNS_API_TOKEN in .env (VMs get it via
+# scripts/lib/secrets.sh); Proxmox gets it through this variable.
+variable "cloudflare_dns_api_token" {
+  description = "Cloudflare DNS token for the Proxmox certificate (TF_VAR_cloudflare_dns_api_token in .env). Sent write-only, never stored in state."
   type        = string
   default     = ""
+  sensitive   = true
+  ephemeral   = true
 }
 
-# ================================================= Backups: restic to R2 ===
+# =========================================== Backups: restic to Backblaze B2 ===
 # Every NixOS VM backs up to <bucket>/<vm name> when this is configured. What
 # gets backed up is defined per host via `homelab.backup` in its NixOS config.
-variable "backup_r2_account_id" {
-  description = "Cloudflare account ID for R2 (set TF_VAR_backup_r2_account_id in .env). Empty = no off-site backups."
+variable "backup_b2_endpoint" {
+  description = "S3 endpoint of the B2 bucket's region, shown on the bucket page, e.g. s3.us-west-004.backblazeb2.com. Empty = no off-site backups."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.backup_b2_endpoint == "" || can(regex("^s3\\.[a-z0-9-]+\\.backblazeb2\\.com$", var.backup_b2_endpoint))
+    error_message = "backup_b2_endpoint must look like s3.us-west-004.backblazeb2.com (no https://, no bucket)."
+  }
 }
 
-variable "backup_r2_bucket" {
-  type    = string
-  default = "homelab-backup"
-}
-
-variable "backup_env_file" {
-  description = "Local file with AWS_ACCESS_KEY_ID=... and AWS_SECRET_ACCESS_KEY=... (R2 API token). Copied to VMs at install."
+variable "backup_bucket" {
+  description = "B2 bucket for restic repositories (one per VM, under <bucket>/<vm name>)."
   type        = string
-  default     = ""
+  default     = "homelab-backup"
 }
 
-variable "backup_password_file" {
-  description = "Local file containing the restic repository password. Keep a copy in your password manager!"
-  type        = string
-  default     = ""
-}
+# Credentials (B2_BACKUP_KEY_ID, B2_BACKUP_TOKEN, B2_BACKUP_RESTIC_PASSWORD)
+# come from .env; see scripts/lib/secrets.sh.
 
 # ====================================================================== VMs ===
 variable "nixos_vms" {
@@ -138,16 +139,18 @@ variable "nixos_vms" {
     cores       = optional(number, 2)
     memory_mb   = optional(number, 2048)
     disk_gb     = optional(number, 32)
-    domain      = optional(string, "")      # FQDN; gets a Let's Encrypt cert if acme_email is set
-    dns_servers = optional(list(string))    # overrides var.dns_servers (e.g. for a host running Pi-hole)
-    guest_agent = optional(bool, false)     # set true after the first apply
-    settings    = optional(map(string), {}) # extra values for the host's settings.json
+    domain      = optional(string, "")       # FQDN; gets a Let's Encrypt cert if acme_email is set
+    dns_servers = optional(list(string))     # overrides var.dns_servers (e.g. for a host running Pi-hole)
+    guest_agent = optional(bool, false)      # set true after the first apply
+    settings    = optional(map(string), {})  # extra values for the host's settings.json
+    secrets     = optional(list(string), []) # extra files for /var/lib/secrets, e.g. ["cloudflared-token"]
   }))
   default = {}
 
   validation {
-    condition     = alltrue([for vm in values(var.nixos_vms) : can(cidrhost(vm.ipv4_cidr, 0))])
-    error_message = "ipv4_cidr must look like 192.0.2.50/24."
+    # {lan} is filled in from .env later (private.tf); check the shape with a stand-in.
+    condition     = alltrue([for vm in values(var.nixos_vms) : can(cidrhost(replace(vm.ipv4_cidr, "{lan}", "10.0.0"), 0))])
+    error_message = "ipv4_cidr must look like 192.0.2.50/24 or {lan}.50/24."
   }
 }
 
@@ -194,7 +197,7 @@ variable "pve_backup" {
 
 # ============================================== Proxmox web UI certificate ===
 variable "pve_domain" {
-  description = "FQDN for the Proxmox host (e.g. pve.example.com). Gets a Let's Encrypt certificate via the Cloudflare DNS-01 challenge (uses acme_email / acme_dns_env_file). Empty = keep the self-signed cert."
+  description = "FQDN for the Proxmox host (e.g. pve.example.com). Gets a Let's Encrypt certificate via the Cloudflare DNS-01 challenge (uses acme_email / cloudflare_dns_api_token). Empty = keep the self-signed cert."
   type        = string
   default     = ""
 }

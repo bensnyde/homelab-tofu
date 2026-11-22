@@ -13,8 +13,8 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Your values and secrets (see terraform.tfvars.example / .env.example)
-terraform.tfvars
+# Secrets and private values (see .env.example). terraform.tfvars is committed:
+# its private parts are {domain}/{lan} placeholders filled in from .env.
 *.auto.tfvars
 .env
 .env.*

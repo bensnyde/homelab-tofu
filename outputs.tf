@@ -6,7 +6,7 @@ output "nixos_vms" {
       ip      = vm.ip_address
       ssh     = vm.ssh
       rebuild = vm.rebuild
-      url     = var.nixos_vms[name].domain != "" ? "https://${var.nixos_vms[name].domain}" : null
+      url     = local.nixos_vms[name].domain != "" ? "https://${local.nixos_vms[name].domain}" : null
     }
   }
 }
@@ -33,7 +33,7 @@ output "pve_backup" {
 output "pve_certificate" {
   description = "Proxmox web UI certificate (Let's Encrypt), if pve_domain is set."
   value = local.pve_tls ? {
-    url     = "https://${var.pve_domain}:8006/"
+    url     = "https://${local.pve_domain}:8006/"
     issuer  = proxmox_acme_certificate.pve[0].issuer
     expires = proxmox_acme_certificate.pve[0].not_after
   } : null

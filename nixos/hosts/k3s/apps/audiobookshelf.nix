@@ -4,14 +4,14 @@
 #   Login:  the first visit creates the root user.
 #
 # Config and metadata (covers, cache, the app's own backups) live on PVCs and
-# are part of the R2 backup. The media library is a hostPath under
+# are part of the B2 backup. The media library is a hostPath under
 # /srv/audiobookshelf on purpose: it's outside the backed-up k3s storage, so
-# gigabytes of audio don't end up in R2. Copy files there, or replace the
+# gigabytes of audio don't end up in B2. Copy files there, or replace the
 # hostPath volumes with an NFS share from your NAS.
 { lib, settings, ... }:
 let
   ns = "audiobookshelf";
-  image = "ghcr.io/advplyr/audiobookshelf:2.37.2";
+  image = "ghcr.io/advplyr/audiobookshelf:2.38.0";
   mediaDir = "/srv/audiobookshelf";
   domain = settings.domain or "";
   host = "audiobookshelf.${domain}";

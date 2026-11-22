@@ -100,9 +100,15 @@ resource "local_file" "settings" {
     dns_servers     = var.dns_servers
     ssh_public_keys = var.ssh_public_keys
     timezone        = var.timezone
+    # Read by scripts/push-secrets.sh, not by Nix.
+    secrets = var.secrets
   }, var.settings))
 
   lifecycle {
+    precondition {
+      condition     = can(cidrhost(var.ipv4_cidr, 0)) && !strcontains(jsonencode(var.settings), "{domain}")
+      error_message = "${var.name}: unresolved {lan}/{domain} placeholder (ipv4_cidr = ${var.ipv4_cidr}) - is .env loaded with TF_VAR_lan_prefix and TF_VAR_base_domain?"
+    }
     precondition {
       condition     = fileexists("${local.host_dir}/default.nix")
       error_message = "No NixOS config for this VM: create nixos/hosts/${var.name}/default.nix."
@@ -117,21 +123,14 @@ resource "terraform_data" "install" {
 
   depends_on = [local_file.settings]
 
-  lifecycle {
-    precondition {
-      condition     = alltrue([for src in values(var.secrets) : try(fileexists(pathexpand(src)), false)])
-      error_message = "A secret file for ${var.name} is missing: ${join(", ", values(var.secrets))}"
-    }
-  }
-
   provisioner "local-exec" {
     command = "${path.module}/install.sh"
     environment = {
       TARGET_HOST = local.ip_address
       TARGET_USER = "debian"
       FLAKE       = local.flake_ref
-      # One "local|remote" pair per line.
-      SECRETS = join("\n", [for dest, src in var.secrets : "${pathexpand(src)}|${dest}"])
+      # File names; the values come from .env in tofu's own environment.
+      SECRETS = join(" ", var.secrets)
     }
   }
 }

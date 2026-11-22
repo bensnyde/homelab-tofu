@@ -2,10 +2,17 @@
 # Called by OpenTofu (modules/nixos-vm, terraform_data.install). Waits for the
 # freshly cloned Debian VM to accept SSH, then runs nixos-anywhere against it.
 #
-# Env: TARGET_HOST, TARGET_USER, FLAKE, SECRETS ("local|remote" per line).
+# Env: TARGET_HOST, TARGET_USER, FLAKE, SECRETS (space-separated names of files
+# for /var/lib/secrets, built from .env values; see scripts/lib/secrets.sh).
 set -euo pipefail
 
 : "${TARGET_HOST:?}" "${TARGET_USER:?}" "${FLAKE:?}"
+
+# shellcheck source=../../scripts/lib/secrets.sh
+source "$(dirname "$0")/../../scripts/lib/secrets.sh"
+read -r -a secret_names <<< "${SECRETS:-}"
+# Fail before waiting on the VM if a value is missing from the environment.
+check_secret_env "${secret_names[@]}"
 
 ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
           -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR)
@@ -27,17 +34,9 @@ done
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 extra_args=()
-declare -A dirs=()
-while IFS='|' read -r src dest; do
-  [[ -z "$src" ]] && continue
-  dir=$(dirname "$dest")
-  install -d -m 0700 "$staging$dir"
-  install -m 0600 "$src" "$staging$dest"
-  dirs[$dir]=1
-done <<< "${SECRETS:-}"
-if (( ${#dirs[@]} )); then
-  extra_args+=(--extra-files "$staging")
-  for d in "${!dirs[@]}"; do extra_args+=(--chown "$d" 0:0); done
+if (( ${#secret_names[@]} )); then
+  render_secrets "$staging/var/lib/secrets" "${secret_names[@]}"
+  extra_args+=(--extra-files "$staging" --chown /var/lib/secrets 0:0)
 fi
 
 echo ">> installing NixOS (${FLAKE}) on ${TARGET_HOST}"

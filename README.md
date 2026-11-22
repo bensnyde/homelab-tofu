@@ -8,7 +8,7 @@ Declarative VMs on Proxmox VE:
   NixOS (disko partitioning, static IP, SSH keys). Shared features:
   - **TLS**: Let's Encrypt via the Cloudflare **DNS-01** challenge for any VM with a
     `domain`, with no ports exposed to the internet.
-  - **Backups**: nightly restic to Cloudflare R2, one repository per VM.
+  - **Backups**: nightly restic to Backblaze B2, one repository per VM.
 - **Kubernetes (k3s)**: a NixOS host type with declarative apps, one namespace each.
 - **Home Assistant OS VMs**: the official appliance image, with optional USB passthrough.
 
@@ -25,6 +25,7 @@ Included NixOS hosts:
 ```
 .
 ├── versions.tf             providers (bpg/proxmox, local)
+├── state.tf                encrypted state, stored in Backblaze B2
 ├── variables.tf            Proxmox connection, shared defaults, TLS, backups, VM maps
 ├── main.tf                 one module instance per entry in nixos_vms / haos_vms
 ├── images.tf               Debian bootstrap image, HAOS images (on the PVE host)
@@ -32,7 +33,8 @@ Included NixOS hosts:
 ├── pve-tls.tf              Let's Encrypt certificate for the Proxmox web UI
 ├── outputs.tf              per-VM IDs, IPs, URLs, rebuild commands
 ├── moved.tf                state moves from the old single-VM layout
-├── terraform.tfvars        your values (gitignored), see terraform.tfvars.example
+├── terraform.tfvars        your VMs and settings (committed; private parts are {domain}/{lan})
+├── private.tf              fills in {domain}/{lan} from .env
 ├── .env                    secrets for tofu (gitignored), see .env.example
 ├── modules/
 │   ├── nixos-vm/           Proxmox VM + settings.json + nixos-anywhere install
@@ -44,7 +46,7 @@ Included NixOS hosts:
 │   │   ├── common.nix      boot, static network, SSH, nix settings
 │   │   ├── disk-config.nix disko layout (/dev/sda, GPT, ext4)
 │   │   ├── acme.nix        Let's Encrypt via DNS-01 for settings.domain
-│   │   ├── backup.nix      homelab.backup.* options → pg_dump + restic to R2
+│   │   ├── backup.nix      homelab.backup.* options → pg_dump + restic to B2
 │   │   └── k3s.nix         homelab.k3s.* options → k3s + declarative apps
 │   └── hosts/
 │       ├── authentik/
@@ -59,7 +61,9 @@ Included NixOS hosts:
 │       └── kasm/
 │           └── default.nix       Kasm Workspaces (services.kasmweb, Docker)
 └── scripts/
-    └── rebuild.sh          apply NixOS changes to an existing VM
+    ├── rebuild.sh          apply NixOS changes to an existing VM
+    ├── push-secrets.sh     write a VM's /var/lib/secrets from .env
+    └── lib/secrets.sh      which .env values make up each secret file
 ```
 
 ## Prerequisites (on the machine running tofu)
@@ -94,31 +98,62 @@ Included NixOS hosts:
 
 ## Credentials
 
-Secrets live in local files. Files for VMs are **copied at install time** (via
-nixos-anywhere `--extra-files`, into `/var/lib/secrets/`, root-only), so they never
-end up in tofu state, the Nix store or git.
+All secrets live in **one file, `.env`** (gitignored, `chmod 600`). Load it before any
+`tofu` or script command: `set -a; source .env; set +a`. VMs get their secrets as files
+in `/var/lib/secrets/` (root-only), **built from `.env` at install time** (nixos-anywhere
+`--extra-files`), so they never end up in tofu state, the Nix store or git. Which files
+each VM gets follows from its settings, plus `secrets = [...]` in `nixos_vms`; how each
+file is built from `.env` is in `scripts/lib/secrets.sh`.
 
-| File | Contents | Used for |
+| Variable in `.env` | Used for | On the VMs as |
 |---|---|---|
-| `.env` | `PROXMOX_VE_API_TOKEN=root@pam!tofu=...`<br>`TF_VAR_backup_r2_account_id=...` | Proxmox API, R2 account |
-| `acme_dns_env_file` | `CLOUDFLARE_DNS_API_TOKEN=...` | Let's Encrypt DNS-01 |
-| `backup_env_file` | `AWS_ACCESS_KEY_ID=...`<br>`AWS_SECRET_ACCESS_KEY=...` | R2 (S3 API) |
-| `backup_password_file` | random restic repository password | backup encryption |
+| `PROXMOX_VE_API_TOKEN` | Proxmox API | — |
+| `TF_VAR_state_passphrase` | state encryption | — |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | state bucket (its own B2 key) | — |
+| `CLOUDFLARE_DNS_API_TOKEN` (+ `TF_VAR_cloudflare_dns_api_token` for `pve_domain`) | Let's Encrypt DNS-01 | `acme-dns.env` |
+| `B2_BACKUP_KEY_ID` / `B2_BACKUP_TOKEN` | restic → B2 | `restic.env` |
+| `B2_BACKUP_RESTIC_PASSWORD` | backup encryption | `restic-password` |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare Tunnel (k3s) | `cloudflared-token` |
 
-Keep the files `chmod 600`. **Store the restic password in your password manager.**
-Without it, the backups can't be decrypted.
+`.env` also holds the **private parts of the configuration**, so `terraform.tfvars` can
+be committed to this public repo. In it, `{domain}` and `{lan}` stand for
+`TF_VAR_base_domain` and `TF_VAR_lan_prefix` (filled in by `private.tf`), e.g.
+`ipv4_cidr = "{lan}.50/24"`, `domain = "auth.{domain}"`. Values that are private as a
+whole are plain `TF_VAR_*` entries: `TF_VAR_acme_email`, `TF_VAR_backup_bucket`,
+`TF_VAR_state_bucket`. Don't also set those in `terraform.tfvars`: it would override
+`.env`. A plan without `.env` loaded stops at the unresolved placeholders.
+
+See `.env.example`. **Keep a copy of `.env` in your password manager.** Without the
+restic password and the state passphrase, backups and state can't be decrypted.
 
 - **Cloudflare DNS token** (My Profile → API Tokens → Create Token): Zone → DNS → **Edit**
   and Zone → Zone → **Read**, limited to your zone.
-- **R2**: create the bucket first. Then go to R2 → Manage R2 API Tokens → **Account API
-  token**, choose *Object Read & Write*, limit it to that bucket, and set TTL *Forever*.
-  Use the Access Key ID and Secret Access Key, not the "token value". The account ID is
-  on the R2 overview page.
+- **Backblaze B2**: create a **private** bucket first, and leave its lifecycle setting
+  on *Keep all versions* (restic manages retention itself). Its **Endpoint** on the bucket
+  page (e.g. `s3.us-west-004.backblazeb2.com`) goes in `backup_b2_endpoint`. Then go to
+  Application Keys → **Add a New Application Key**, allow access to that bucket only,
+  with *Read and Write*. Use the **keyID** and **applicationKey** (shown once) as
+  `B2_BACKUP_KEY_ID` / `B2_BACKUP_TOKEN`. The state bucket gets its own key the same way.
+
+## State (encrypted, in B2)
+
+OpenTofu's state is **encrypted on your machine** (AES-GCM, key derived from
+`TF_VAR_state_passphrase`) and stored in a B2 bucket (`TF_VAR_state_bucket` in `.env`, see
+`state.tf`). B2 keeps every version, so each apply leaves a restorable copy. The bucket
+uses its own B2 key (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in `.env`), not the VM
+backup key, which lives on every VM.
+
+**Keep the passphrase (and the rest of `.env`) in your password manager.** With those and this repo, a new workstation only needs
+`tofu init`. Without the passphrase the state can't be decrypted. Tofu refuses to read or
+write unencrypted state (`enforced = true`).
+
+To restore an older state version, download it from the bucket in the B2 web UI and push
+it with `tofu state push -force <file>` (it is still encrypted with the same passphrase).
 
 ## Usage
 
 ```sh
-cp terraform.tfvars.example terraform.tfvars    # and .env.example → .env
+cp .env.example .env                            # fill in; terraform.tfvars is committed
 set -a; source .env; set +a                     # OpenTofu does not read .env by itself
 tofu init
 tofu apply
@@ -164,7 +199,7 @@ Proxmox backups can freeze the filesystem.
      };
      networking.firewall.allowedTCPPorts = [ 80 443 ];
 
-     homelab.backup.paths = [ "/var/lib/grafana" ];   # → R2 <bucket>/grafana
+     homelab.backup.paths = [ "/var/lib/grafana" ];   # → B2 <bucket>/grafana
    }
    ```
 3. Run `tofu apply`.
@@ -276,7 +311,7 @@ Notes:
 - **Removing an app** deletes its manifest file, but k3s keeps the objects. Run
   `kubectl delete namespace <ns>` to remove them.
 - **PersistentVolume data** (`/var/lib/rancher/k3s/storage`, local-path provisioner)
-  is included in the R2 backup.
+  is included in the B2 backup.
 - **kubectl from your workstation:**
   ```sh
   ssh root@<vm-ip> cat /etc/rancher/k3s/k3s.yaml | sed 's/127.0.0.1/<vm-ip>/' > ~/.kube/k3s.yaml
@@ -310,7 +345,7 @@ resolvers, so nothing depends on Pi-hole to start Pi-hole.
 | Image | pinned in `apps/audiobookshelf.nix` |
 
 The media library is deliberately outside the k3s storage directory, so it doesn't
-get uploaded to R2. Copy books in with `rsync`/`scp` to the VM, or replace the
+get uploaded to B2. Copy books in with `rsync`/`scp` to the VM, or replace the
 `hostPath` volumes with an `nfs` volume pointing at your NAS. Add the folders as
 libraries in the UI (`/audiobooks`, `/podcasts`). The VM's `disk_gb` limits how much
 fits locally.
@@ -324,6 +359,29 @@ fits locally.
 | Sign-up | disabled; invite users from the admin settings |
 | Data | PVC `mealie-data` (SQLite + images, backed up) |
 | Image | pinned in `apps/mealie.nix` |
+
+### Cloudflare Tunnel (public access)
+
+`apps/cloudflared.nix` publishes chosen apps on the internet through a
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/):
+`cloudflared` connects **out** to Cloudflare, so no ports are opened and the home IP
+stays hidden. Only hostnames you add to the tunnel are public; everything else stays
+LAN-only.
+
+1. Cloudflare dashboard → Zero Trust → Networks → Tunnels → **Create a tunnel**
+   (Cloudflared). Copy the **token**: the long `eyJ…` value in the install command,
+   not the tunnel ID.
+2. Put it in `.env` as `CLOUDFLARE_TUNNEL_TOKEN`, add `secrets = ["cloudflared-token"]`
+   to the k3s entry in `nixos_vms`, then `tofu apply` and
+   `./scripts/push-secrets.sh k3s`.
+3. In the tunnel's **Public hostnames**, add e.g. `books.<zone>` →
+   `http://audiobookshelf.audiobookshelf.svc.cluster.local:80`. Cloudflare creates the
+   proxied DNS record.
+
+Use a first-level name (`books.example.com`), not `books.k3s.example.com`: Cloudflare's
+free edge certificate only covers `*.<zone>`. Anything exposed this way relies on the
+app's own login, so keep it updated and use strong passwords (or OpenID via authentik).
+Check the connectors with `k3s kubectl -n cloudflared logs deploy/cloudflared`.
 
 ## Kasm Workspaces
 
@@ -450,12 +508,12 @@ tofu apply                          # only if tfvars/.env changed (regenerates s
 ./scripts/rebuild.sh <host> test    # activate without making it the boot default
 ```
 
-**New secrets on an existing VM** are not copied automatically, because that only
-happens during install. Copy them by hand before rebuilding:
+**Secrets on an existing VM** are only written automatically at install. After rotating
+one in `.env`, or adding one to a VM (`secrets = [...]`, then `tofu apply`), push them:
 
 ```sh
-scp <local-file> root@<vm-ip>:/var/lib/secrets/<name>
-ssh root@<vm-ip> 'chmod 600 /var/lib/secrets/*'
+./scripts/push-secrets.sh <host> --check   # compare the VM's files with .env
+./scripts/push-secrets.sh <host>           # write them (root-only, 0600)
 ```
 
 ## Upgrades
@@ -483,7 +541,7 @@ previous generation in the GRUB menu.
 
 | Level | What | Where | When |
 |---|---|---|---|
-| App | per host: `homelab.backup.postgresql.databases` (dumped) + `homelab.backup.paths` | R2 `<bucket>/<vm name>` (restic, encrypted) | dump 02:00, upload ~03:00 (VM time zone) |
+| App | per host: `homelab.backup.postgresql.databases` (dumped) + `homelab.backup.paths` | B2 `<bucket>/<vm name>` (restic, encrypted) | dump 02:00, upload ~03:00 (VM time zone) |
 | HAOS | HA's own automatic backups (config, apps, database; encrypted) | local + R2 `<bucket>/homeassistant` (HA's Cloudflare R2 integration) | daily, set in HA |
 | VM | full VM images of every VM in `nixos_vms`/`haos_vms` + `pve_backup.extra_vmids` | PVE storage `pve_backup.storage` | `pve_backup.schedule` (default 01:00, PVE host time zone) |
 
@@ -504,18 +562,18 @@ pve_backup = {
 ```
 
 ```sh
-ssh root@<vm-ip> restic-r2 snapshots
-ssh root@<vm-ip> systemctl status restic-backups-r2
-ssh root@<vm-ip> systemctl start restic-backups-r2      # run now
+ssh root@<vm-ip> restic-b2 snapshots
+ssh root@<vm-ip> systemctl status restic-backups-b2
+ssh root@<vm-ip> systemctl start restic-backups-b2      # run now
 ```
 
-**Restore authentik from R2** onto a fresh VM (`tofu apply` with the same settings),
+**Restore authentik from B2** onto a fresh VM (`tofu apply` with the same settings),
 then on the VM:
 
 ```sh
 systemctl stop authentik authentik-worker
-restic-r2 snapshots                         # wrapper with repo + credentials preset
-restic-r2 restore latest --target /
+restic-b2 snapshots                         # wrapper with repo + credentials preset
+restic-b2 restore latest --target /
 sudo -u postgres psql -c 'DROP DATABASE authentik' -c 'CREATE DATABASE authentik OWNER authentik'
 sudo -u postgres psql authentik < /var/backup/postgresql/authentik.sql
 systemctl start authentik-migrate authentik authentik-worker
@@ -523,7 +581,7 @@ systemctl start authentik-migrate authentik authentik-worker
 
 ## Proxmox web UI certificate
 
-With `pve_domain` (plus `acme_email` and `acme_dns_env_file`) set, `pve-tls.tf` uses
+With `pve_domain` (plus `acme_email` and `TF_VAR_cloudflare_dns_api_token`) set, `pve-tls.tf` uses
 Proxmox's built-in ACME client to get a Let's Encrypt certificate for the web UI/API on
 port 8006. It uses the Cloudflare DNS-01 plugin, so no ports are opened, and Proxmox
 renews it automatically. The Cloudflare token goes to Proxmox as a **write-only**

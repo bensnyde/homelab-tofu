@@ -6,7 +6,7 @@
 #           from the admin settings.
 #
 # Data (SQLite database, recipe images) lives on PVC "mealie-data", which is
-# part of the R2 backup.
+# part of the B2 backup.
 { lib, settings, ... }:
 let
   ns = "mealie";

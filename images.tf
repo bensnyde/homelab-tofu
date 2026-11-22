@@ -3,7 +3,7 @@
 # Debian cloud image used to bootstrap every NixOS install (any Linux with
 # cloud-init + SSH works for nixos-anywhere).
 resource "proxmox_download_file" "debian" {
-  count = length(var.nixos_vms) > 0 ? 1 : 0
+  count = length(local.nixos_vms) > 0 ? 1 : 0
 
   node_name    = var.proxmox_node
   datastore_id = var.image_datastore
@@ -20,8 +20,8 @@ resource "proxmox_download_file" "debian" {
 # unpacked on the PVE host over SSH. Named .img for the "iso" content type;
 # the disk import detects the qcow2 format from the file contents.
 locals {
-  pve_ssh_host  = regex("^https?://([^:/]+)", var.proxmox_endpoint)[0]
-  haos_versions = toset([for vm in values(var.haos_vms) : vm.haos_version])
+  pve_ssh_host  = regex("^https?://([^:/]+)", local.proxmox_endpoint)[0]
+  haos_versions = toset([for vm in values(local.haos_vms) : vm.haos_version])
 }
 
 resource "terraform_data" "haos_image" {

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0" # state encryption + variables in backend/encryption
 
   required_providers {
     proxmox = {
@@ -14,7 +14,7 @@ terraform {
 }
 
 provider "proxmox" {
-  endpoint = var.proxmox_endpoint
+  endpoint = local.proxmox_endpoint
   # If null, the provider falls back to the PROXMOX_VE_API_TOKEN env var.
   api_token = var.proxmox_api_token
   insecure  = var.proxmox_insecure
@@ -27,7 +27,7 @@ provider "proxmox" {
     # Don't rely on the node name resolving; use the endpoint's host.
     node {
       name    = var.proxmox_node
-      address = regex("^https?://([^:/]+)", var.proxmox_endpoint)[0]
+      address = regex("^https?://([^:/]+)", local.proxmox_endpoint)[0]
     }
   }
 }

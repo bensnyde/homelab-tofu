@@ -3,14 +3,14 @@ locals {
   ssh_keys  = [for f in var.ssh_public_key_files : trimspace(file(pathexpand(f)))]
 
   acme_enabled   = var.acme_email != ""
-  backup_enabled = var.backup_r2_account_id != ""
-  backup_base    = "s3:https://${var.backup_r2_account_id}.r2.cloudflarestorage.com/${var.backup_r2_bucket}"
+  backup_enabled = var.backup_b2_endpoint != ""
+  backup_base    = "s3:https://${var.backup_b2_endpoint}/${var.backup_bucket}"
 }
 
 # ------------------------------------------------------------- NixOS VMs ---
 module "nixos_vm" {
   source   = "./modules/nixos-vm"
-  for_each = var.nixos_vms
+  for_each = local.nixos_vms
 
   name        = each.key
   node        = var.proxmox_node
@@ -26,8 +26,8 @@ module "nixos_vm" {
   bootstrap_image_id = proxmox_download_file.debian[0].id
 
   ipv4_cidr       = each.value.ipv4_cidr
-  ipv4_gateway    = var.ipv4_gateway
-  dns_servers     = each.value.dns_servers != null ? each.value.dns_servers : var.dns_servers
+  ipv4_gateway    = local.ipv4_gateway
+  dns_servers     = each.value.dns_servers != null ? each.value.dns_servers : local.dns_servers
   ssh_public_keys = local.ssh_keys
   timezone        = var.timezone
 
@@ -41,22 +41,19 @@ module "nixos_vm" {
     backup_repo = local.backup_enabled ? "${local.backup_base}/${each.key}" : ""
   }, each.value.settings)
 
-  # Copied to /var/lib/secrets on the VM at install time (never in state).
-  secrets = merge(
-    local.acme_enabled && each.value.domain != "" ? {
-      "/var/lib/secrets/acme-dns.env" = var.acme_dns_env_file
-    } : {},
-    local.backup_enabled ? {
-      "/var/lib/secrets/restic.env"      = var.backup_env_file
-      "/var/lib/secrets/restic-password" = var.backup_password_file
-    } : {},
-  )
+  # Files for /var/lib/secrets on the VM, built from .env values at install
+  # time (never in state); scripts/push-secrets.sh updates them later.
+  secrets = distinct(concat(
+    local.acme_enabled && each.value.domain != "" ? ["acme-dns.env"] : [],
+    local.backup_enabled ? ["restic.env", "restic-password"] : [],
+    each.value.secrets,
+  ))
 }
 
 # ------------------------------------------------ Home Assistant OS VMs ---
 module "haos_vm" {
   source   = "./modules/haos-vm"
-  for_each = var.haos_vms
+  for_each = local.haos_vms
 
   name        = each.key
   node        = var.proxmox_node
@@ -68,9 +65,9 @@ module "haos_vm" {
   usb_devices = each.value.usb_devices
 
   ipv4_cidr    = each.value.ipv4_cidr
-  ipv4_gateway = var.ipv4_gateway
-  dns_servers  = each.value.dns_servers != null ? each.value.dns_servers : var.dns_servers
-  pve_endpoint = var.proxmox_endpoint
+  ipv4_gateway = local.ipv4_gateway
+  dns_servers  = each.value.dns_servers != null ? each.value.dns_servers : local.dns_servers
+  pve_endpoint = local.proxmox_endpoint
 
   datastore = var.vm_datastore
   bridge    = var.network_bridge

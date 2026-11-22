@@ -1,4 +1,4 @@
-# Nightly off-site backups with restic to the host's R2 repository
+# Nightly off-site backups with restic to the host's Backblaze B2 repository
 # (settings.backup_repo, i.e. <bucket>/<hostname>). Hosts declare what to back up:
 #
 #   homelab.backup.paths = [ "/var/lib/foo" ];
@@ -35,7 +35,8 @@ in
       compression = "none"; # restic compresses + deduplicates better on plain SQL
     };
 
-    services.restic.backups.r2 = {
+    # Unit restic-backups-b2, CLI wrapper restic-b2.
+    services.restic.backups.b2 = {
       repository = repo;
       environmentFile = "/var/lib/secrets/restic.env";
       passwordFile = "/var/lib/secrets/restic-password";

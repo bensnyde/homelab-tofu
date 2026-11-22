@@ -17,14 +17,13 @@ timezone             = "UTC"
 # --- TLS (optional): Let's Encrypt via DNS-01 for every VM with a `domain` -----
 # acme_email        = "you@example.com"
 # acme_dns_provider = "cloudflare"
-# acme_dns_env_file = "~/.config/homelab-tofu/cloudflare.env"   # CLOUDFLARE_DNS_API_TOKEN=...
+# Token: CLOUDFLARE_DNS_API_TOKEN in .env (and TF_VAR_cloudflare_dns_api_token for pve_domain)
 # pve_domain        = "pve.example.com"   # Let's Encrypt cert for the Proxmox UI (port 8006)
 
-# --- Backups (optional): restic to Cloudflare R2, one repo per VM -------------
-# Account ID: TF_VAR_backup_r2_account_id in .env
-# backup_r2_bucket     = "homelab-backup"
-# backup_env_file      = "~/.config/homelab-tofu/restic.env"    # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
-# backup_password_file = "~/.config/homelab-tofu/restic-password"
+# --- Backups (optional): restic to Backblaze B2, one repo per VM --------------
+# backup_b2_endpoint   = "s3.us-west-004.backblazeb2.com"       # bucket page -> Endpoint
+# backup_bucket        = "homelab-backup"
+# Credentials: B2_BACKUP_KEY_ID, B2_BACKUP_TOKEN, B2_BACKUP_RESTIC_PASSWORD in .env
 
 # --- NixOS VMs: each key needs nixos/hosts/<key>/default.nix -------------------
 nixos_vms = {
@@ -43,6 +42,7 @@ nixos_vms = {
     memory_mb   = 4096
     disk_gb     = 40
     dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
+    # secrets   = ["cloudflared-token"]    # Cloudflare Tunnel (apps/cloudflared.nix)
   }
 
   # Kasm Workspaces (nixos/hosts/kasm). Workspace images are large; sessions need RAM.

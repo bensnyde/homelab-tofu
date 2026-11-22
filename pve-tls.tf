@@ -7,7 +7,7 @@
 #   proxmox_insecure = false
 
 locals {
-  pve_tls = var.pve_domain != "" && var.acme_email != ""
+  pve_tls = local.pve_domain != "" && var.acme_email != ""
 }
 
 # Proxmox only lets root@pam itself (not API tokens, even root's) register ACME
@@ -49,9 +49,9 @@ resource "proxmox_acme_dns_plugin" "cloudflare" {
   plugin = "cloudflare"
   api    = "cf"
   # Write-only: the token is sent to Proxmox but never stored in tofu state.
-  # Bump data_wo_version after rotating the token in acme_dns_env_file.
+  # Bump data_wo_version after rotating CLOUDFLARE_DNS_API_TOKEN in .env.
   data_wo = {
-    CF_Token = regex("CLOUDFLARE_DNS_API_TOKEN=(\\S+)", file(pathexpand(var.acme_dns_env_file)))[0]
+    CF_Token = var.cloudflare_dns_api_token
   }
   data_wo_version = 1
 
@@ -59,6 +59,10 @@ resource "proxmox_acme_dns_plugin" "cloudflare" {
     precondition {
       condition     = var.acme_dns_provider == "cloudflare"
       error_message = "pve_domain currently supports the Cloudflare DNS plugin only."
+    }
+    precondition {
+      condition     = var.cloudflare_dns_api_token != ""
+      error_message = "pve_domain needs TF_VAR_cloudflare_dns_api_token (set it from CLOUDFLARE_DNS_API_TOKEN in .env)."
     }
   }
 }
@@ -69,7 +73,7 @@ resource "proxmox_acme_certificate" "pve" {
   node_name = var.proxmox_node
   account   = terraform_data.pve_acme_account[0].output.name
   domains = [{
-    domain = var.pve_domain
+    domain = local.pve_domain
     plugin = proxmox_acme_dns_plugin.cloudflare[0].plugin
   }]
 }

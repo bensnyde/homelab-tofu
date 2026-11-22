@@ -1,5 +1,5 @@
 # Nightly Proxmox backup of all VMs (full images, for fast rollback). Off-site,
-# app-level backups are separate: restic to R2, see nixos/modules/backup.nix.
+# app-level backups are separate: restic to Backblaze B2, see nixos/modules/backup.nix.
 resource "proxmox_backup_job" "nightly" {
   id       = "homelab-nightly"
   enabled  = var.pve_backup.enabled

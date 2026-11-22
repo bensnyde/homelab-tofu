@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "dependencyDashboard": true,
+  "customManagers": [
+    {
+      "description": "Container images pinned in k3s apps: image = \"registry/repo:tag\";",
+      "customType": "regex",
+      "managerFilePatterns": ["/^nixos/hosts/k3s/apps/.+\\.nix$/"],
+      "matchStrings": ["image\\s*=\\s*\"(?<depName>[^:\"@]+):(?<currentValue>[^\"@]+)\";"],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One PR per app image, labelled for easy filtering",
+      "matchManagers": ["custom.regex"],
+      "addLabels": ["k3s-app"],
+      "commitMessageTopic": "{{depName}}"
+    }
+  ],
+  "nix": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  }
+}
