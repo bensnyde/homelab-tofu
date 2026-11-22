@@ -39,6 +39,9 @@ module "nixos_vm" {
     acme_email  = local.acme_enabled && each.value.domain != "" ? var.acme_email : ""
     acme_dns    = var.acme_dns_provider
     backup_repo = local.backup_enabled ? "${local.backup_base}/${each.key}" : ""
+    # Every NixOS VM's address and domain, by name: lets hosts refer to each
+    # other without IPs in the (public) Nix code. Used by Pi-hole and Headscale.
+    lan_hosts = local.lan_hosts
   }, each.value.settings)
 
   # Files for /var/lib/secrets on the VM, built from .env values at install

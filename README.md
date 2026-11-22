@@ -19,6 +19,7 @@ Included NixOS hosts:
 | `authentik` | identity provider (PostgreSQL, nginx) |
 | `k3s` | single-node k3s with **Pi-hole**, **Audiobookshelf** and **Mealie**, one namespace each |
 | `kasm` | **Kasm Workspaces** (browser-streamed desktops/apps in Docker) |
+| `gateway` | **Tailscale** router: your phone reaches the k3s apps and Kasm from anywhere, no open ports |
 
 ## Layout
 
@@ -58,8 +59,10 @@ Included NixOS hosts:
 │       │       ├── pihole.nix
 │       │       ├── audiobookshelf.nix
 │       │       └── mealie.nix
-│       └── kasm/
-│           └── default.nix       Kasm Workspaces (services.kasmweb, Docker)
+│       ├── kasm/
+│       │   └── default.nix       Kasm Workspaces (services.kasmweb, Docker)
+│       └── gateway/
+│           └── default.nix       Tailscale subnet router to k3s and Kasm
 └── scripts/
     ├── rebuild.sh          apply NixOS changes to an existing VM
     ├── push-secrets.sh     write a VM's /var/lib/secrets from .env
@@ -113,7 +116,7 @@ file is built from `.env` is in `scripts/lib/secrets.sh`.
 | `CLOUDFLARE_DNS_API_TOKEN` (+ `TF_VAR_cloudflare_dns_api_token` for `pve_domain`) | Let's Encrypt DNS-01 | `acme-dns.env` |
 | `B2_BACKUP_KEY_ID` / `B2_BACKUP_TOKEN` | restic → B2 | `restic.env` |
 | `B2_BACKUP_RESTIC_PASSWORD` | backup encryption | `restic-password` |
-| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare Tunnel (k3s) | `cloudflared-token` |
+| `TAILSCALE_AUTHKEY` | the gateway's first Tailscale login | `tailscale-authkey` |
 
 `.env` also holds the **private parts of the configuration**, so `terraform.tfvars` can
 be committed to this public repo. In it, `{domain}` and `{lan}` stand for
@@ -403,29 +406,6 @@ fits locally.
 | Data | PVC `mealie-data` (SQLite + images, backed up) |
 | Image | pinned in `apps/mealie.nix` |
 
-### Cloudflare Tunnel (public access)
-
-`apps/cloudflared.nix` publishes chosen apps on the internet through a
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/):
-`cloudflared` connects **out** to Cloudflare, so no ports are opened and the home IP
-stays hidden. Only hostnames you add to the tunnel are public; everything else stays
-LAN-only.
-
-1. Cloudflare dashboard → Zero Trust → Networks → Tunnels → **Create a tunnel**
-   (Cloudflared). Copy the **token**: the long `eyJ…` value in the install command,
-   not the tunnel ID.
-2. Put it in `.env` as `CLOUDFLARE_TUNNEL_TOKEN`, add `secrets = ["cloudflared-token"]`
-   to the k3s entry in `nixos_vms`, then `tofu apply` and
-   `./scripts/push-secrets.sh k3s`.
-3. In the tunnel's **Public hostnames**, add e.g. `books.<zone>` →
-   `http://audiobookshelf.audiobookshelf.svc.cluster.local:80`. Cloudflare creates the
-   proxied DNS record.
-
-Use a first-level name (`books.example.com`), not `books.k3s.example.com`: Cloudflare's
-free edge certificate only covers `*.<zone>`. Anything exposed this way relies on the
-app's own login, so keep it updated and use strong passwords (or OpenID via authentik).
-Check the connectors with `k3s kubectl -n cloudflared logs deploy/cloudflared`.
-
 ## Kasm Workspaces
 
 The `kasm` host runs [Kasm Workspaces](https://kasmweb.com) with the NixOS
@@ -464,6 +444,47 @@ nixos_vms = {
   workspaces you want; each one is pulled as a Docker image on first use.
 - The Kasm version follows nixpkgs, so it only changes when you update `nixpkgs` and
   rebuild. Major Kasm upgrades may need a database migration; check the release notes.
+
+## Remote access (Tailscale)
+
+The `gateway` VM connects your devices to the homelab through
+[Tailscale](https://tailscale.com) (hosted service, free personal plan). It advertises
+a route to each VM listed in `routeTo` in `nixos/hosts/gateway/default.nix` (the
+k3s VM and Kasm, one `/32` each). With Tailscale on, your phone opens the usual URLs
+(`https://mealie.<k3s domain>`, `https://audiobookshelf.<k3s domain>`, Kasm's domain).
+Public DNS already resolves them to those LAN addresses, and the gateway carries the
+traffic. The rest of the LAN stays unreachable.
+
+**No ports are forwarded and nothing is exposed:** the gateway and your devices both
+connect out to Tailscale and set up direct WireGuard tunnels, or use Tailscale's relays
+when that isn't possible. Tailscale sees device names and when they connect, not your
+traffic. Forwarding UDP 41641 to the gateway is an optional speed-up.
+
+```hcl
+nixos_vms = {
+  gateway = {
+    ipv4_cidr = "192.0.2.51/24"
+    cores     = 1
+    memory_mb = 2048                     # the install needs >= 1.5 GiB
+    disk_gb   = 16
+    secrets   = ["tailscale-authkey"]    # TAILSCALE_AUTHKEY in .env
+  }
+}
+```
+
+1. **Auth key:** in the [admin console](https://login.tailscale.com/admin/settings/keys),
+   Settings → Keys → **Generate auth key** (not reusable). Put it in `.env` as
+   `TAILSCALE_AUTHKEY`. It's only used for the gateway's first login.
+2. `tofu apply`. The gateway installs and joins your tailnet as `gateway`.
+3. **In the admin console** → Machines → `gateway`:
+   - **Edit route settings** → approve both routes.
+   - **Disable key expiry**, so the gateway doesn't need a new login every 180 days.
+4. **Phone:** install the Tailscale app and sign in with the same account. Mobile apps
+   use approved routes automatically.
+
+To reach another VM, add its name to `routeTo`, run `./scripts/rebuild.sh gateway`,
+and approve the new route in the admin console. Check the gateway with
+`ssh root@<gateway-ip> tailscale status`.
 
 ## Adding a Home Assistant OS VM
 

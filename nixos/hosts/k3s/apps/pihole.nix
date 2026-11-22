@@ -5,7 +5,9 @@
 #   Login:  password in /var/lib/pihole-secret/password on the VM
 #
 # With a domain, Pi-hole also answers <domain> and *.<domain> with the VM's IP,
-# so every app on this cluster resolves for clients that use Pi-hole.
+# so every app on this cluster resolves for clients that use Pi-hole. The
+# other NixOS VMs' domains (settings.lan_hosts) resolve to their LAN addresses
+# too, e.g. Headscale's, whose public record points at the home IP.
 { config, lib, pkgs, settings, ... }:
 let
   ns = "pihole";
@@ -13,6 +15,12 @@ let
   secretFile = "/var/lib/pihole-secret/password";
   domain = settings.domain or "";
   host = "pihole.${domain}";
+  # Local records: this cluster's domain (with all subdomains), plus every
+  # other VM's domain -> its LAN address.
+  localRecords =
+    lib.optional (domain != "") "address=/${domain}/${settings.ipv4_address}"
+    ++ lib.mapAttrsToList (_: h: "address=/${h.domain}/${h.ip}")
+      (lib.filterAttrs (_: h: h.domain != "" && h.domain != domain) (settings.lan_hosts or { }));
 in
 {
   homelab.k3s.apps.pihole = {
@@ -53,10 +61,10 @@ in
                   # Queries arrive from the pod network, not the local subnet.
                   { name = "FTLCONF_dns_listeningMode"; value = "ALL"; }
                   { name = "FTLCONF_dns_upstreams"; value = "1.1.1.1;9.9.9.9"; }
-                ] ++ lib.optional (domain != "") {
-                  # Local record: <domain> and all subdomains -> this VM.
+                ] ++ lib.optional (localRecords != [ ]) {
+                  # Array setting: entries separated by ";".
                   name = "FTLCONF_misc_dnsmasq_lines";
-                  value = "address=/${domain}/${settings.ipv4_address}";
+                  value = lib.concatStringsSep ";" localRecords;
                 };
                 ports = [
                   { name = "dns-udp"; containerPort = 53; protocol = "UDP"; }

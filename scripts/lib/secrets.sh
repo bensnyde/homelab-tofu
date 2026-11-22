@@ -8,7 +8,7 @@
 #   acme-dns.env       CLOUDFLARE_DNS_API_TOKEN                     modules/acme.nix
 #   restic.env         B2_BACKUP_KEY_ID, B2_BACKUP_TOKEN            modules/backup.nix
 #   restic-password    B2_BACKUP_RESTIC_PASSWORD                    modules/backup.nix
-#   cloudflared-token  CLOUDFLARE_TUNNEL_TOKEN                      k3s apps/cloudflared.nix
+#   tailscale-authkey  TAILSCALE_AUTHKEY                            hosts/gateway
 
 # Env vars each secret needs (space-separated).
 secret_vars() {
@@ -16,7 +16,7 @@ secret_vars() {
     acme-dns.env)      echo "CLOUDFLARE_DNS_API_TOKEN" ;;
     restic.env)        echo "B2_BACKUP_KEY_ID B2_BACKUP_TOKEN" ;;
     restic-password)   echo "B2_BACKUP_RESTIC_PASSWORD" ;;
-    cloudflared-token) echo "CLOUDFLARE_TUNNEL_TOKEN" ;;
+    tailscale-authkey) echo "TAILSCALE_AUTHKEY" ;;
     *) echo "unknown secret '$1' (see scripts/lib/secrets.sh)" >&2; return 1 ;;
   esac
 }
@@ -46,8 +46,8 @@ render_secret() {
       printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n' "$B2_BACKUP_KEY_ID" "$B2_BACKUP_TOKEN" ;;
     restic-password)
       printf '%s' "$B2_BACKUP_RESTIC_PASSWORD" ;;
-    cloudflared-token)
-      printf '%s' "$CLOUDFLARE_TUNNEL_TOKEN" ;;
+    tailscale-authkey)
+      printf '%s' "$TAILSCALE_AUTHKEY" ;;
     *) secret_vars "$1" ;;
   esac
 }

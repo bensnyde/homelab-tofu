@@ -51,6 +51,13 @@ locals {
     })
   }
 
+  lan_hosts = {
+    for name, vm in local.nixos_vms : name => {
+      ip     = split("/", vm.ipv4_cidr)[0]
+      domain = vm.domain
+    }
+  }
+
   # Anything still containing a placeholder after substitution.
   unresolved = [for v in flatten([
     local.proxmox_endpoint, local.ipv4_gateway, local.dns_servers, local.pve_domain,

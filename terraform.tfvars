@@ -18,10 +18,10 @@ timezone             = "UTC"
 
 # --- TLS (Let's Encrypt via Cloudflare DNS-01) -------------------------------
 # acme_email: TF_VAR_acme_email in .env
-pve_domain        = "proxmox.{domain}" # Let's Encrypt cert for the Proxmox UI
+pve_domain = "proxmox.{domain}" # Let's Encrypt cert for the Proxmox UI
 
 # --- Backups (restic to Backblaze B2) ----------------------------------------
-backup_b2_endpoint   = "s3.us-east-005.backblazeb2.com"
+backup_b2_endpoint = "s3.us-east-005.backblazeb2.com"
 # backup_bucket: TF_VAR_backup_bucket in .env
 # Credentials: B2_BACKUP_KEY_ID / B2_BACKUP_TOKEN / B2_BACKUP_RESTIC_PASSWORD in .env
 
@@ -44,16 +44,25 @@ nixos_vms = {
     disk_gb     = 40
     domain      = "k3s.{domain}"
     guest_agent = true
-    secrets     = ["cloudflared-token"] # Cloudflare Tunnel (apps/cloudflared.nix)
     dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
   }
 
   kasm = {
-    ipv4_cidr = "{lan}.55/24"
-    cores     = 4
-    memory_mb = 16384
-    disk_gb   = 100
+    ipv4_cidr   = "{lan}.55/24"
+    cores       = 4
+    memory_mb   = 16384
+    disk_gb     = 100
     domain      = "kasm.{domain}"
+    guest_agent = true
+  }
+
+  # Tailscale gateway to k3s and Kasm (nixos/hosts/gateway). No ports forwarded.
+  gateway = {
+    ipv4_cidr   = "{lan}.51/24"
+    cores       = 1
+    memory_mb   = 2048 # the install (kexec) needs >= 1.5 GiB
+    disk_gb     = 16
+    secrets     = ["tailscale-authkey"]
     guest_agent = true
   }
 }

@@ -49,12 +49,3 @@ tar -C "$staging" -cf - "${names[@]}" | ssh "${ssh_opts[@]}" "root@$ip" '
   tar -C /var/lib/secrets -xf - --no-same-owner --no-overwrite-dir
   chmod 0600 /var/lib/secrets/*'
 echo "$host: wrote ${names[*]}"
-
-# Services that only read their secret at start.
-for n in "${names[@]}"; do
-  case "$n" in
-    cloudflared-token)
-      ssh "${ssh_opts[@]}" "root@$ip" 'systemctl restart cloudflared-token-secret.service' \
-        && echo "$host: restarted cloudflared-token-secret" ;;
-  esac
-done

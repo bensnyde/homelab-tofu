@@ -42,7 +42,6 @@ nixos_vms = {
     memory_mb   = 4096
     disk_gb     = 40
     dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
-    # secrets   = ["cloudflared-token"]    # Cloudflare Tunnel (apps/cloudflared.nix)
   }
 
   # Kasm Workspaces (nixos/hosts/kasm). Workspace images are large; sessions need RAM.

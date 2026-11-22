@@ -143,7 +143,7 @@ variable "nixos_vms" {
     dns_servers = optional(list(string))     # overrides var.dns_servers (e.g. for a host running Pi-hole)
     guest_agent = optional(bool, false)      # set true after the first apply
     settings    = optional(map(string), {})  # extra values for the host's settings.json
-    secrets     = optional(list(string), []) # extra files for /var/lib/secrets, e.g. ["cloudflared-token"]
+    secrets     = optional(list(string), []) # extra files for /var/lib/secrets (names from scripts/lib/secrets.sh)
   }))
   default = {}
 
