@@ -68,7 +68,7 @@ Included NixOS hosts:
 
 ## Prerequisites (on the machine running tofu)
 
-- **OpenTofu** >= 1.6, and `jq`.
+- **OpenTofu** >= 1.10 (state encryption, variables in the backend), and `jq`.
 - **Nix with flakes**, from the Fedora package. Its default `/etc/nix/nix.conf`
   already sets `experimental-features = nix-command flakes`:
   ```sh
@@ -143,9 +143,10 @@ OpenTofu's state is **encrypted on your machine** (AES-GCM, key derived from
 uses its own B2 key (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in `.env`), not the VM
 backup key, which lives on every VM.
 
-**Keep the passphrase (and the rest of `.env`) in your password manager.** With those and this repo, a new workstation only needs
-`tofu init`. Without the passphrase the state can't be decrypted. Tofu refuses to read or
-write unencrypted state (`enforced = true`).
+**Keep the passphrase (and the rest of `.env`) in your password manager.** Without the
+passphrase the state can't be decrypted. Tofu refuses to read or write unencrypted state
+(`enforced = true`). To set up another machine, see
+[New workstation](#new-workstation-or-after-losing-this-one).
 
 To restore an older state version, download it from the bucket in the B2 web UI and push
 it with `tofu state push -force <file>` (it is still encrypted with the same passphrase).
@@ -165,6 +166,48 @@ done. After the first apply, set `guest_agent = true` for the VM and apply again
 Proxmox backups can freeze the filesystem.
 
 `tofu destroy` deletes all VMs and their data.
+
+### New workstation (or after losing this one)
+
+Everything needed to manage the homelab is this repo plus two things to keep in your
+password manager: **`.env`** and **the SSH private key** whose public key is in
+`ssh_public_key_files`. The VMs (root) and the Proxmox host only accept that key. The
+state is in B2, and the VMs' secret files are rebuilt from `.env`.
+
+1. Install the [prerequisites](#prerequisites-on-the-machine-running-tofu): OpenTofu
+   (>= 1.10), `jq`, Nix with flakes and the nix-community cache.
+2. Restore the SSH key and load it:
+   ```sh
+   $EDITOR ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519   # paste it (keeps it out of shell history)
+   ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub
+   ssh-add ~/.ssh/id_ed25519
+   ```
+   Or use a new key: add its public key to `ssh_public_key_files`, put it in
+   `/root/.ssh/authorized_keys` on the Proxmox host, and rebuild every VM from a machine
+   that still has the old key.
+3. Clone the repo and restore `.env` from your password manager:
+   ```sh
+   git clone git@github.com:<you>/homelab-tofu.git && cd homelab-tofu
+   $EDITOR .env && chmod 600 .env
+   ```
+4. Load `.env` and connect to the state in B2:
+   ```sh
+   set -a; source .env; set +a
+   tofu init
+   tofu plan
+   tofu apply
+   ```
+   On a fresh clone the plan shows only `module.nixos_vm["<name>"].local_file.settings
+   must be replaced` per VM: the gitignored `nixos/hosts/<name>/settings.json` files.
+   `scripts/rebuild.sh` and `scripts/push-secrets.sh` need them, and the apply writes
+   them without changing anything on the VMs. If the plan shows anything else, stop and
+   check `.env`.
+5. Check that the VMs' secrets match `.env`:
+   ```sh
+   for h in $(jq -r 'keys[]' <<< "$(tofu output -json nixos_vms)"); do
+     ./scripts/push-secrets.sh "$h" --check
+   done
+   ```
 
 ## Adding a NixOS VM
 
