@@ -68,12 +68,12 @@ module "haos_vm" {
   usb_devices = each.value.usb_devices
 
   ipv4_cidr    = each.value.ipv4_cidr
-  ipv4_gateway = local.ipv4_gateway
+  ipv4_gateway = each.value.ipv4_gateway != null ? each.value.ipv4_gateway : local.ipv4_gateway
   dns_servers  = each.value.dns_servers != null ? each.value.dns_servers : local.dns_servers
   pve_endpoint = local.proxmox_endpoint
 
   datastore = var.vm_datastore
   bridge    = var.network_bridge
-  vlan_id   = var.vlan_id
+  vlan_id   = each.value.vlan_id != null ? each.value.vlan_id : var.vlan_id
   image_id  = terraform_data.haos_image[each.value.haos_version].input.volume
 }

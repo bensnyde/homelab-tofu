@@ -62,16 +62,31 @@ variable "ipv4_cidr" {
   description = "Static address with prefix, set inside HAOS via the guest agent. null = DHCP."
   type        = string
   default     = null
+
+  validation {
+    condition     = var.ipv4_cidr == null || can(cidrhost(var.ipv4_cidr, 0))
+    error_message = "ipv4_cidr is not a valid address - an unresolved {lan}/{iot} placeholder? Check .env."
+  }
 }
 
 variable "ipv4_gateway" {
   type    = string
   default = null
+
+  validation {
+    condition     = var.ipv4_gateway == null || can(cidrhost("${var.ipv4_gateway}/32", 0))
+    error_message = "ipv4_gateway is not a valid address - an unresolved {lan}/{iot} placeholder? Check .env."
+  }
 }
 
 variable "dns_servers" {
   type    = list(string)
   default = []
+
+  validation {
+    condition     = alltrue([for s in var.dns_servers : can(cidrhost("${s}/32", 0))])
+    error_message = "dns_servers has an invalid address - an unresolved {lan}/{iot} placeholder? Check .env."
+  }
 }
 
 variable "pve_endpoint" {

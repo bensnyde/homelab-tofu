@@ -40,7 +40,7 @@ nixos_vms = {
   k3s = {
     ipv4_cidr   = "{lan}.59/24"
     cores       = 4
-    memory_mb   = 4096
+    memory_mb   = 8192
     disk_gb     = 40
     domain      = "k3s.{domain}"
     guest_agent = true
@@ -50,7 +50,7 @@ nixos_vms = {
   kasm = {
     ipv4_cidr   = "{lan}.55/24"
     cores       = 4
-    memory_mb   = 16384
+    memory_mb   = 12288
     disk_gb     = 100
     domain      = "kasm.{domain}"
     guest_agent = true
@@ -75,7 +75,12 @@ haos_vms = {
     memory_mb    = 8192
     disk_gb      = 32
     mac_address  = "BC:24:11:57:00:01" # fixed, for a DHCP reservation
-    ipv4_cidr    = "{lan}.57/24"
+    # Stays on the IoT VLAN (tagged on the Proxmox port) with the devices it
+    # controls; everything else is on the Servers network ({lan}).
+    vlan_id      = 3
+    ipv4_cidr    = "{iot}.57/24"
+    ipv4_gateway = "{iot}.1"
+    dns_servers  = ["{iot}.1"]
     usb_devices = {
       zigbee-zwave = "10c4:8a2a" # Silicon Labs HubZ (Zigbee + Z-Wave)
       bluetooth    = "0b05:1bf6" # Realtek Bluetooth
@@ -88,4 +93,8 @@ pve_backup = {
   # Old hand-made HA VM 100 is stopped (fallback after the move to VM 101);
   # its last backup stays on `local`. Re-add [100] here only if needed.
   extra_vmids = []
+  # `local` is the host's 100 GB root disk and a full set of backups is ~29 GB
+  # (Kasm alone ~22 GB). At most 2 per VM, plus the one being written, fits;
+  # the default 3 daily + 2 weekly filled the disk. App data is in B2 anyway.
+  prune_backups = { "keep-daily" = "1", "keep-weekly" = "1" }
 }

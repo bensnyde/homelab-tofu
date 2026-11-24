@@ -120,7 +120,8 @@ file is built from `.env` is in `scripts/lib/secrets.sh`.
 
 `.env` also holds the **private parts of the configuration**, so `terraform.tfvars` can
 be committed to this public repo. In it, `{domain}` and `{lan}` stand for
-`TF_VAR_base_domain` and `TF_VAR_lan_prefix` (filled in by `private.tf`), e.g.
+`TF_VAR_base_domain` and `TF_VAR_lan_prefix` (filled in by `private.tf`; `{iot}` and
+`TF_VAR_iot_prefix` likewise, for Home Assistant on the IoT VLAN), e.g.
 `ipv4_cidr = "{lan}.50/24"`, `domain = "auth.{domain}"`. Values that are private as a
 whole are plain `TF_VAR_*` entries: `TF_VAR_acme_email`, `TF_VAR_backup_bucket`,
 `TF_VAR_state_bucket`. Don't also set those in `terraform.tfvars`: it would override

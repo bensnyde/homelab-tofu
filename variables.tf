@@ -165,6 +165,8 @@ variable "haos_vms" {
     mac_address  = optional(string)          # for a DHCP reservation
     ipv4_cidr    = optional(string)          # static IP set via the guest agent; null = DHCP
     dns_servers  = optional(list(string))    # overrides var.dns_servers
+    ipv4_gateway = optional(string)          # overrides var.ipv4_gateway
+    vlan_id      = optional(number)          # overrides var.vlan_id
     usb_devices  = optional(map(string), {}) # { label = "vendor:product" }
   }))
   default = {}

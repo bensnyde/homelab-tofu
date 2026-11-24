@@ -1,6 +1,6 @@
 # Private values stay in .env, so terraform.tfvars can be committed to this
 # (public) repo. In terraform.tfvars, write {domain} and {lan} where your DNS
-# zone and LAN prefix go, e.g.
+# zone and LAN prefix go ({iot}: the IoT network's prefix, for Home Assistant), e.g.
 #
 #   proxmox_endpoint = "https://{lan}.168:8006/"
 #   nixos_vms = { authentik = { ipv4_cidr = "{lan}.50/24", domain = "auth.{domain}" } }
@@ -26,10 +26,22 @@ variable "lan_prefix" {
   }
 }
 
+variable "iot_prefix" {
+  description = "First three octets of the IoT network, substituted for {iot} (TF_VAR_iot_prefix in .env), e.g. 192.168.3. Used by Home Assistant, which stays on the IoT VLAN with its devices."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.iot_prefix == "" || can(regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$", var.iot_prefix))
+    error_message = "iot_prefix must be three octets without a trailing dot, e.g. 192.168.3."
+  }
+}
+
 locals {
   # {lan} and {domain} -> values from .env. Unset placeholders are caught by
   # the preconditions in modules/nixos-vm (invalid address) and below.
-  _sub = { lan = var.lan_prefix, domain = var.base_domain }
+  # An unset {iot} stays in place, so the check below catches it.
+  _sub = { lan = var.lan_prefix, domain = var.base_domain, iot = var.iot_prefix != "" ? var.iot_prefix : "{iot}" }
 
   proxmox_endpoint = replace(replace(var.proxmox_endpoint, "{lan}", local._sub.lan), "{domain}", local._sub.domain)
   ipv4_gateway     = replace(var.ipv4_gateway, "{lan}", local._sub.lan)
@@ -46,8 +58,9 @@ locals {
 
   haos_vms = {
     for name, vm in var.haos_vms : name => merge(vm, {
-      ipv4_cidr   = vm.ipv4_cidr == null ? null : replace(vm.ipv4_cidr, "{lan}", local._sub.lan)
-      dns_servers = vm.dns_servers == null ? null : [for s in vm.dns_servers : replace(s, "{lan}", local._sub.lan)]
+      ipv4_cidr    = vm.ipv4_cidr == null ? null : replace(replace(vm.ipv4_cidr, "{lan}", local._sub.lan), "{iot}", local._sub.iot)
+      ipv4_gateway = vm.ipv4_gateway == null ? null : replace(replace(vm.ipv4_gateway, "{lan}", local._sub.lan), "{iot}", local._sub.iot)
+      dns_servers  = vm.dns_servers == null ? null : [for s in vm.dns_servers : replace(replace(s, "{lan}", local._sub.lan), "{iot}", local._sub.iot)]
     })
   }
 
@@ -62,7 +75,7 @@ locals {
   unresolved = [for v in flatten([
     local.proxmox_endpoint, local.ipv4_gateway, local.dns_servers, local.pve_domain,
     [for vm in values(local.nixos_vms) : [vm.ipv4_cidr, vm.domain]],
-    [for vm in values(local.haos_vms) : [coalesce(vm.ipv4_cidr, "")]],
+    [for vm in values(local.haos_vms) : [coalesce(vm.ipv4_cidr, ""), coalesce(vm.ipv4_gateway, ""), vm.dns_servers == null ? [] : vm.dns_servers]],
   ]) : v if strcontains(v, "{")]
 }
 
@@ -70,6 +83,6 @@ locals {
 check "placeholders" {
   assert {
     condition     = length(local.unresolved) == 0
-    error_message = "Unresolved {lan}/{domain} placeholders - set TF_VAR_lan_prefix / TF_VAR_base_domain in .env and `set -a; source .env; set +a`: ${join(", ", local.unresolved)}"
+    error_message = "Unresolved {lan}/{iot}/{domain} placeholders - set TF_VAR_lan_prefix / TF_VAR_iot_prefix / TF_VAR_base_domain in .env and `set -a; source .env; set +a`: ${join(", ", local.unresolved)}"
   }
 }
