@@ -6,8 +6,9 @@
 #   nixos_vms = { authentik = { ipv4_cidr = "{lan}.50/24", domain = "auth.{domain}" } }
 #
 # and set TF_VAR_base_domain / TF_VAR_lan_prefix in .env. Values that are
-# private as a whole (acme_email, backup_bucket, state_bucket) are plain
-# TF_VAR_* entries in .env. Everything else reads the expanded local.* values.
+# private as a whole are TF_VAR_* entries in .env (acme_email; backup_bucket and
+# state_bucket via B2_BACKUP_BUCKET / B2_TFSTATE_BUCKET). Everything else reads
+# the expanded local.* values.
 
 variable "base_domain" {
   description = "DNS zone substituted for {domain} (TF_VAR_base_domain in .env), e.g. example.com."

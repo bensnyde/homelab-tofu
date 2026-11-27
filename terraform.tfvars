@@ -22,7 +22,7 @@ pve_domain = "proxmox.{domain}" # Let's Encrypt cert for the Proxmox UI
 
 # --- Backups (restic to Backblaze B2) ----------------------------------------
 backup_b2_endpoint = "s3.us-east-005.backblazeb2.com"
-# backup_bucket: TF_VAR_backup_bucket in .env
+# backup_bucket: B2_BACKUP_BUCKET in .env (passed as TF_VAR_backup_bucket)
 # Credentials: B2_BACKUP_KEY_ID / B2_BACKUP_TOKEN / B2_BACKUP_RESTIC_PASSWORD in .env
 
 # --- VMs ---------------------------------------------------------------------

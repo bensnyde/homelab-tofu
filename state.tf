@@ -2,7 +2,7 @@
 # TF_VAR_state_passphrase via PBKDF2) before it is written anywhere.
 # Without the passphrase the state can't be read: keep it in your password manager.
 #
-# Stored in Backblaze B2 (bucket TF_VAR_state_bucket in .env, which keeps every
+# Stored in Backblaze B2 (bucket B2_TFSTATE_BUCKET in .env, which keeps every
 # version, so each apply leaves a restorable history). Credentials: AWS_ACCESS_KEY_ID /
 # AWS_SECRET_ACCESS_KEY in .env, a B2 key limited to that bucket - deliberately
 # not the VM backup key, which lives on every VM.
@@ -42,7 +42,7 @@ terraform {
 }
 
 variable "state_bucket" {
-  description = "B2 bucket holding the state (TF_VAR_state_bucket in .env)."
+  description = "B2 bucket holding the state (B2_TFSTATE_BUCKET in .env, passed as TF_VAR_state_bucket)."
   type        = string
 }
 

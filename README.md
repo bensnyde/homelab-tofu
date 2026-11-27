@@ -124,8 +124,10 @@ be committed to this public repo. In it, `{domain}` and `{lan}` stand for
 `TF_VAR_base_domain` and `TF_VAR_lan_prefix` (filled in by `private.tf`; `{iot}` and
 `TF_VAR_iot_prefix` likewise, for Home Assistant on the IoT VLAN), e.g.
 `ipv4_cidr = "{lan}.50/24"`, `domain = "auth.{domain}"`. Values that are private as a
-whole are plain `TF_VAR_*` entries: `TF_VAR_acme_email`, `TF_VAR_backup_bucket`,
-`TF_VAR_state_bucket`. Don't also set those in `terraform.tfvars`: it would override
+whole are plain `TF_VAR_*` entries: `TF_VAR_acme_email`, and the bucket names, which are
+set as `B2_BACKUP_BUCKET` / `B2_TFSTATE_BUCKET` and passed on as
+`TF_VAR_backup_bucket=$B2_BACKUP_BUCKET` / `TF_VAR_state_bucket=$B2_TFSTATE_BUCKET`
+(after them in the file). Don't also set those in `terraform.tfvars`: it would override
 `.env`. A plan without `.env` loaded stops at the unresolved placeholders.
 
 See `.env.example`. **Keep a copy of `.env` in your password manager.** Without the
@@ -143,7 +145,7 @@ restic password and the state passphrase, backups and state can't be decrypted.
 ## State (encrypted, in B2)
 
 OpenTofu's state is **encrypted on your machine** (AES-GCM, key derived from
-`TF_VAR_state_passphrase`) and stored in a B2 bucket (`TF_VAR_state_bucket` in `.env`, see
+`TF_VAR_state_passphrase`) and stored in a B2 bucket (`B2_TFSTATE_BUCKET` in `.env`, see
 `state.tf`). B2 keeps every version, so each apply leaves a restorable copy. The bucket
 uses its own B2 key (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in `.env`), not the VM
 backup key, which lives on every VM.
