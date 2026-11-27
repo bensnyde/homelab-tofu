@@ -119,7 +119,7 @@ variable "backup_b2_endpoint" {
 }
 
 variable "backup_bucket" {
-  description = "B2 bucket for restic repositories (one per VM, under <bucket>/<vm name>)."
+  description = "B2 bucket for backups: restic repositories per VM (<bucket>/<vm name>) and the Proxmox VM images (<bucket>/proxmox)."
   type        = string
   default     = "homelab-backup"
 }
@@ -193,6 +193,18 @@ variable "pve_backup" {
     compress      = optional(string, "zstd")
     prune_backups = optional(map(string), { "keep-daily" = "3", "keep-weekly" = "2" })
     extra_vmids   = optional(list(number), [])
+
+    # Off-site copy to B2 (pve-backup-b2.tf), in <bucket>/proxmox: full,
+    # encrypted backups, each restorable on its own. Needs backup_b2_endpoint
+    # and the B2_BACKUP_* values in .env.
+    offsite = optional(object({
+      enabled     = optional(bool, true)
+      schedule    = optional(string, "03:00") # systemd calendar time, PVE host time zone
+      keep_daily  = optional(number, 2)
+      keep_weekly = optional(number, 2) # Sunday's backup is also kept as a weekly
+      # Bump to re-send the B2 key/password after rotating them in .env.
+      secrets_version = optional(number, 1)
+    }), {})
   })
   default = {}
 }

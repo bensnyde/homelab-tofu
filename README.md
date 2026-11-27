@@ -608,7 +608,8 @@ previous generation in the GRUB menu.
 |---|---|---|---|
 | App | per host: `homelab.backup.postgresql.databases` (dumped) + `homelab.backup.paths` | B2 `<bucket>/<vm name>` (restic, encrypted) | dump 02:00, upload ~03:00 (VM time zone) |
 | HAOS | HA's own automatic backups (config, apps, database; encrypted) | local + R2 `<bucket>/homeassistant` (HA's Cloudflare R2 integration) | daily, set in HA |
-| VM | full VM images of every VM in `nixos_vms`/`haos_vms` + `pve_backup.extra_vmids` | PVE storage `pve_backup.storage` | `pve_backup.schedule` (default 01:00, PVE host time zone) |
+| VM | full VM images of every VM in `nixos_vms`/`haos_vms` + `pve_backup.extra_vmids` | PVE storage `pve_backup.storage` (turned off here: `pve_backup.enabled = false`) | `pve_backup.schedule` (default 01:00, PVE host time zone) |
+| VM, off-site | the same VMs, full images (vzdump, zstd), encrypted with gpg | B2 `<bucket>/proxmox/vm-<id>/{daily,weekly}/` | `pve_backup.offsite.schedule` (default 03:00, PVE host time zone) |
 
 The app-level backup keeps 7 daily, 4 weekly and 6 monthly snapshots and verifies 5% of
 the repository data after each run. Missed runs start at the next boot.
@@ -625,6 +626,45 @@ pve_backup = {
   prune_backups = { "keep-daily" = "3", "keep-weekly" = "2" }
 }
 ```
+
+### Off-site VM images (B2)
+
+`pve-backup-b2.tf` installs a nightly job on the PVE host (`pve/backup-b2.sh`,
+systemd timer `pve-backup-b2`). Each VM is backed up with vzdump and streamed,
+encrypted, straight to B2, so the host's disk needs no free space for it. Every file
+is a **complete backup that restores on its own** (no incremental chains). The job
+keeps the last 2 daily backups per VM, and Sunday's is also kept as one of the last
+2 weeklies. A failed upload never replaces an older backup.
+
+It uses the same B2 key as the app backups, and encrypts with
+`B2_BACKUP_RESTIC_PASSWORD`: without that password the images can't be decrypted.
+B2 storage is about 4 full copies of every VM.
+
+```hcl
+pve_backup = {
+  offsite = { schedule = "03:00", keep_daily = 2, keep_weekly = 2 }   # the defaults
+}
+```
+
+On the PVE host:
+
+```sh
+pve-backup-b2 list                       # backups in B2
+systemctl start pve-backup-b2            # back up all VMs now (journalctl -u pve-backup-b2)
+pve-backup-b2 run 104                    # just one VM
+pve-backup-b2 restore vm-104/daily/<file> 104             # restore over a lost VM (remove it first)
+pve-backup-b2 restore vm-104/daily/<file> 9104 --unique 1 # test copy next to the original
+```
+
+A restore recreates the VM with its config, disks and MAC addresses (`--unique 1`
+gives new ones). It is not started. Without this repo's host setup, the same works
+by hand with the B2 key and password:
+`rclone cat <remote>:<bucket>/proxmox/<file> | gpg -d | zstd -dc | qmrestore - <vmid>`.
+
+After rotating the B2 key or password in `.env`, bump
+`pve_backup.offsite.secrets_version` and apply, so the host gets the new values.
+
+### App backups (restic)
 
 ```sh
 ssh root@<vm-ip> restic-b2 snapshots

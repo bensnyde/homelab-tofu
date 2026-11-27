@@ -90,11 +90,9 @@ haos_vms = {
 
 # --- Proxmox VM backups ------------------------------------------------------
 pve_backup = {
-  # Old hand-made HA VM 100 is stopped (fallback after the move to VM 101);
-  # its last backup stays on `local`. Re-add [100] here only if needed.
+  # No local VM backups: `local` is the host's 100 GB root disk, too small for
+  # them (Kasm and k3s are ~22-26 GB each). The VMs are backed up to B2 only
+  # (offsite, pve-backup-b2.tf): 2 daily + 2 weekly full images per VM.
+  enabled     = false
   extra_vmids = []
-  # `local` is the host's 100 GB root disk and a full set of backups is ~29 GB
-  # (Kasm alone ~22 GB). At most 2 per VM, plus the one being written, fits;
-  # the default 3 daily + 2 weekly filled the disk. App data is in B2 anyway.
-  prune_backups = { "keep-daily" = "1", "keep-weekly" = "1" }
 }
