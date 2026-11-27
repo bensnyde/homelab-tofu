@@ -117,6 +117,7 @@ file is built from `.env` is in `scripts/lib/secrets.sh`.
 | `B2_BACKUP_KEY_ID` / `B2_BACKUP_TOKEN` | restic → B2 | `restic.env` |
 | `B2_BACKUP_RESTIC_PASSWORD` | backup encryption | `restic-password` |
 | `TAILSCALE_AUTHKEY` | the gateway's first Tailscale login | `tailscale-authkey` |
+| `B2_AUDIOBOOKS_KEY_ID` / `B2_AUDIOBOOKS_TOKEN` / `B2_AUDIOBOOKS_BUCKET` | Audiobookshelf library (B2 mount on k3s) | `audiobooks-b2.env` |
 
 `.env` also holds the **private parts of the configuration**, so `terraform.tfvars` can
 be committed to this public repo. In it, `{domain}` and `{lan}` stand for

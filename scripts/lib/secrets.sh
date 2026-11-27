@@ -9,6 +9,8 @@
 #   restic.env         B2_BACKUP_KEY_ID, B2_BACKUP_TOKEN            modules/backup.nix
 #   restic-password    B2_BACKUP_RESTIC_PASSWORD                    modules/backup.nix
 #   tailscale-authkey  TAILSCALE_AUTHKEY                            hosts/gateway
+#   audiobooks-b2.env  B2_AUDIOBOOKS_KEY_ID, B2_AUDIOBOOKS_TOKEN,   hosts/k3s/apps/audiobookshelf.nix
+#                      B2_AUDIOBOOKS_BUCKET
 
 # Env vars each secret needs (space-separated).
 secret_vars() {
@@ -17,6 +19,7 @@ secret_vars() {
     restic.env)        echo "B2_BACKUP_KEY_ID B2_BACKUP_TOKEN" ;;
     restic-password)   echo "B2_BACKUP_RESTIC_PASSWORD" ;;
     tailscale-authkey) echo "TAILSCALE_AUTHKEY" ;;
+    audiobooks-b2.env) echo "B2_AUDIOBOOKS_KEY_ID B2_AUDIOBOOKS_TOKEN B2_AUDIOBOOKS_BUCKET" ;;
     *) echo "unknown secret '$1' (see scripts/lib/secrets.sh)" >&2; return 1 ;;
   esac
 }
@@ -48,6 +51,10 @@ render_secret() {
       printf '%s' "$B2_BACKUP_RESTIC_PASSWORD" ;;
     tailscale-authkey)
       printf '%s' "$TAILSCALE_AUTHKEY" ;;
+    audiobooks-b2.env)
+      # rclone remote "b2" (native B2 API) + the bucket, for the library mount.
+      printf 'RCLONE_CONFIG_B2_TYPE=b2\nRCLONE_CONFIG_B2_ACCOUNT=%s\nRCLONE_CONFIG_B2_KEY=%s\nRCLONE_CONFIG_B2_HARD_DELETE=true\nAUDIOBOOKS_BUCKET=%s\n' \
+        "$B2_AUDIOBOOKS_KEY_ID" "$B2_AUDIOBOOKS_TOKEN" "$B2_AUDIOBOOKS_BUCKET" ;;
     *) secret_vars "$1" ;;
   esac
 }

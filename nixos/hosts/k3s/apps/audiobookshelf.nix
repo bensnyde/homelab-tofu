@@ -4,15 +4,21 @@
 #   Login:  the first visit creates the root user.
 #
 # Config and metadata (covers, cache, the app's own backups) live on PVCs and
-# are part of the B2 backup. The media library is a hostPath under
-# /srv/audiobookshelf on purpose: it's outside the backed-up k3s storage, so
-# gigabytes of audio don't end up in B2. Copy files there, or replace the
-# hostPath volumes with an NFS share from your NAS.
-{ lib, settings, ... }:
+# are part of the B2 backup.
+#
+# The audiobook library is its own B2 bucket, mounted with rclone at
+# /srv/audiobookshelf/audiobooks (read-write: uploads in the web UI go to B2),
+# so it takes no space on the VM's disk or in the VM backups. A local cache
+# (up to 5 GB) keeps playback and scans fast. Credentials and bucket:
+# /var/lib/secrets/audiobooks-b2.env (B2_AUDIOBOOKS_* in .env). Podcasts stay
+# on the VM's disk.
+{ lib, pkgs, settings, ... }:
 let
   ns = "audiobookshelf";
   image = "ghcr.io/advplyr/audiobookshelf:2.38.0";
   mediaDir = "/srv/audiobookshelf";
+  b2Env = "/var/lib/secrets/audiobooks-b2.env";
+  cacheDir = "/var/cache/rclone-audiobooks";
   domain = settings.domain or "";
   host = "audiobookshelf.${domain}";
 
@@ -57,7 +63,9 @@ in
                 volumeMounts = [
                   { name = "config"; mountPath = "/config"; }
                   { name = "metadata"; mountPath = "/metadata"; }
-                  { name = "audiobooks"; mountPath = "/audiobooks"; }
+                  # HostToContainer: the pod sees the B2 mount even if it's
+                  # (re)mounted after the pod started.
+                  { name = "audiobooks"; mountPath = "/audiobooks"; mountPropagation = "HostToContainer"; }
                   { name = "podcasts"; mountPath = "/podcasts"; }
                 ];
                 readinessProbe = {
@@ -115,4 +123,38 @@ in
   };
 
   networking.firewall.allowedTCPPorts = lib.optional (domain == "") 13378;
+
+  # The library bucket, mounted before k3s starts. If B2 is unreachable at
+  # boot, Audiobookshelf sees an empty folder and marks books as missing until
+  # the next scan after the mount is back (no data is lost).
+  systemd.services.audiobooks-mount = {
+    description = "Audiobookshelf library (B2 bucket, rclone mount)";
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    before = [ "k3s.service" ];
+    wantedBy = [ "multi-user.target" ];
+    unitConfig.ConditionPathExists = b2Env;
+    path = [ "/run/wrappers" ]; # fusermount3
+    serviceConfig = {
+      Type = "notify";
+      EnvironmentFile = b2Env; # rclone remote "b2" + AUDIOBOOKS_BUCKET
+      Environment = "RCLONE_CONFIG=/dev/null";
+      ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${mediaDir}/audiobooks ${cacheDir}";
+      ExecStart = lib.concatStringsSep " " [
+        "${pkgs.rclone}/bin/rclone mount b2:\${AUDIOBOOKS_BUCKET} ${mediaDir}/audiobooks"
+        "--allow-other --umask 002"
+        "--vfs-cache-mode full --cache-dir ${cacheDir}"
+        "--vfs-cache-max-size 5G --vfs-cache-min-free-space 3G --vfs-cache-max-age 168h"
+        "--dir-cache-time 5m"
+      ];
+      ExecStop = "/run/wrappers/bin/fusermount3 -uz ${mediaDir}/audiobooks";
+      Restart = "on-failure";
+      RestartSec = 10;
+    };
+  };
+
+  # rclone on the command line too, e.g. to copy books into the bucket:
+  #   set -a; . /var/lib/secrets/audiobooks-b2.env; set +a
+  #   RCLONE_CONFIG=/dev/null rclone copy <dir> b2:$AUDIOBOOKS_BUCKET/<title>
+  environment.systemPackages = [ pkgs.rclone ];
 }

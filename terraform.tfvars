@@ -45,6 +45,7 @@ nixos_vms = {
     domain      = "k3s.{domain}"
     guest_agent = true
     dns_servers = ["1.1.1.1", "9.9.9.9"] # not Pi-hole itself, or it can't start
+    secrets     = ["audiobooks-b2.env"]  # Audiobookshelf library mount (B2)
   }
 
   kasm = {
